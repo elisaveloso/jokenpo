@@ -1,124 +1,73 @@
 import socket
-import threading
+from threading import Thread
+from utils import *
 
-# Dicionário de jogadas válidas
-valid_moves = ['pedra', 'papel', 'tesoura']
+clients = []
 
-# Dicionário de regras do jogo
-game_rules = {
-    'pedra': 'tesoura',
-    'papel': 'pedra',
-    'tesoura': 'papel'
-}
-
-# Classe que representa o jogo
-class Game:
-    def __init__(self):
-        self.player1 = None
-        self.player2 = None
-        self.moves = {}
-        self.wins = {1: 0, 2: 0}
-        self.playing = True
-
-    def add_player(self, player_socket):
-        if self.player1 is None:
-            self.player1 = player_socket
-            return 1
-        elif self.player2 is None:
-            self.player2 = player_socket
-            return 2
-        else:
-            return None
-
-    def receive_move(self, player_num, move):
-        self.moves[player_num] = move
-        if player_num == 1:
-            opponent_num = 2
-        else:
-            opponent_num = 1
-
-        if opponent_num in self.moves:
-            self.check_winner(player_num, opponent_num)
-
-    def check_winner(self, player1_num, player2_num):
-        move1 = self.moves[player1_num]
-        move2 = self.moves[player2_num]
-        result = ''
-
-        if move1 == move2:
-            result = 'Empate!'
-        elif game_rules[move1] == move2:
-            result = f'Jogador {player1_num} venceu!'
-            self.wins[player1_num] += 1
-        else:
-            result = f'Jogador {player2_num} venceu!'
-            self.wins[player2_num] += 1
-
-        self.player1.send(result.encode())
-        self.player2.send(result.encode())
-
-        self.moves = {}
-
-        self.check_continue()
-
-    def check_continue(self):
-        response1 = self.player1.recv(1024).decode().strip().lower()
-        response2 = self.player2.recv(1024).decode().strip().lower()
-
-        if response1 == 'não' or response2 == 'não':
-            self.playing = False
-        else:
-            self.player1.send('continuar'.encode())
-            self.player2.send('continuar'.encode())
-
-    def send_report(self):
-        report = f"Relatório de jogo:\nTempo de jogo: {self.wins[1] + self.wins[2]}\nJogador 1: {self.wins[1]} vitórias\nJogador 2: {self.wins[2]} vitórias"
-        self.player1.send(report.encode())
-        self.player2.send(report.encode())
-
-        self.player1.close()
-        self.player2.close()
-
-
-# Função para lidar com cada cliente individualmente
-def handle_client(client_socket, game):
-    player_num = game.add_player(client_socket)
-
-    if player_num is None:
-        client_socket.send("Jogo em andamento. Tente novamente mais tarde.".encode())
-        client_socket.close()
-    else:
-        client_socket.send(f"Você é o Jogador {player_num}".encode())
-
-        while game.playing:
-            move = client_socket.recv(1024).decode().strip().lower()
-            game.receive_move(player_num, move)
-
-        game.send_report()
-
-
-# Função principal do servidor
-def run_server():
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-    host = 'localhost'
-    port = 8888
-
-    server_socket.bind((host, port))
-    server_socket.listen(2)
-
-    print(f"Servidor ouvindo em {host}:{port}")
-
-    game = Game()
-
+rooms = []
+    
+def check_winner(move1, move2):
+    if move1 == move2:
+        return "Empate"
+    
+    if move1 == "pedra" and move2 == "tesoura":
+        return "Player 1 ganhou"
+    
+    if move1 == "papel" and move2 == "pedra":
+        return "Player 1 ganhou"
+    
+    if move1 == "tesoura" and move2 == "papel":
+        return "Player 1 ganhou"
+    
+    return "Player 2 ganhou"
+    
+def game_start(player1, player2):
+    player1.send('run'.encode())
+    player2.send('run'.encode())
     while True:
-        client_socket, address = server_socket.accept()
-        print(f"Nova conexão de {address[0]}:{address[1]}")
+        move1 = player1.recv(1024).decode()
+        move2 = player2.recv(1024).decode()     
+        
+        print(move1)
+        print(move2)
+        
+        # player1.send(move2.encode())
+        # player2.send(move1.encode())
+        
+        # result = check_winner(move1, move2)
+        # player1.send(result.encode())
+        # player2.send(result.encode())
+        
+        # stay1 = player1.recv(1024).decode()
+        # stay2 = player2.recv(1024).decode()
+        
+        # if stay1 == 'nao' or stay2 == 'nao':
+        #     break
+    
+    
+def handle_clients():
+    if len(clients) >= 2:
+        player1 = clients.pop(0)
+        player2 = clients.pop(0)
+        
+        room = Thread(target=game_start, args=(player1, player2,))
+        room.start()
+        
+        rooms.append(room)
+    
+def run_server():
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # Internet connection and TCP socket
+    server_socket.bind((IP, PORT)) # Bind to local host
+    server_socket.listen() # Wait for connection...
+    print(f"Server online on {IP}:{PORT}")
+    
+    while True:
+        client_socket, client_adress = server_socket.accept() # Aceppt client connection
+        print(f'Novo cliente de {client_adress}')  
+        client_socket.send("Conectado ao servidor, aguardando outro player ...".encode()) # inform the client the connection
+        clients.append(client_socket)
+        handle_clients()
 
-        client_thread = threading.Thread(target=handle_client, args=(client_socket, game))
-        client_thread.start()
 
-
-# Executa o servidor
-run_server()
+if __name__ == "__main__":
+    run_server()
